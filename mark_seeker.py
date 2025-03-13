@@ -70,10 +70,10 @@ class KongboSeeker(MarkSeeker):
         # 从 1 开始遍历（假设 0 为背景）
         for label in range(1, num_labels):
             area = stats[label, cv2.CC_STAT_AREA]
-            logger.debug(
-                f"threshold: {threshold}, area: {area}, label: {label}")
             if area > threshold:
                 valid_labels.append(label)
+                logger.debug(
+                    f"threshold: {threshold}, area: {area}, label: {label}")
                 if area > max_area:
                     max_area = area
                     max_label = label

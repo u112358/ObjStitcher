@@ -28,27 +28,34 @@ class ObjStitcher:
         self.mark_seeker = mark_seeker
         self.seek_mark: function = self.mark_seeker.seek_mark
         self.check_mark: function = self.mark_seeker.check_mark
+        self.frame_id = 0
+        self.frame_list = []
 
     def process_frame(self, frame):
-
-        completed_objects = []
+        self.frame_id += 1
+        self.frame_list.append(self.frame_id)
+        completed_objects = dict()
         self.buffer.append(frame)
         total_rows = self._buffer_total_rows()
-        logger.debug(f"当前缓冲区总行数: {total_rows}, 模式: {self.mode}")
+        logger.debug(f"[READ FRAME] 当前缓冲区总行数: {total_rows}, 模式: {self.mode}")
         if self.mode == "seek_mark":
             mark_exists, mark_nums, mark_ends = self.seek_mark(
                 self._buffer_to_array(), self.frame_width_P, self.mark_length, visiable=__DEBUG__)
             logger.debug(
-                f"seek mark mode ：seek mark结果: {mark_exists}")
+                f"[SEEK MARK] result: {mark_exists}")
             if mark_exists:
                 if total_rows >= mark_ends[-1] + self.overlap:
                     obj = self._extract_rows(0, mark_ends[-1]+self.overlap)
                     self._remove_rows(mark_ends[-1]-self.overlap)
-                    completed_objects.append((obj, "seek_mark"))
+                    completed_objects = {
+                        "object": obj,
+                        "type": "seek_mark_success",
+                        "mark_ends": mark_ends
+                    }
                     self.mode = "check_mark"
                 else:
                     # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况
-                    logger.debug(f"seek mark mode ：缓冲区不足，等待更多帧。")
+                    logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
 
             if total_rows >= self.block_size:
@@ -61,19 +68,28 @@ class ObjStitcher:
                     standard_mark_end = self.block_size-self.overlap
                     shift = mark_end - standard_mark_end
                     logger.debug(
-                        f"mark end: {mark_end}, standard mark end: {standard_mark_end}")
-                    logger.debug(f"偏移量: {shift}")
+                        f"[CHECK MARK]: mark end: {mark_end}, standard mark end: {standard_mark_end}")
+                    logger.debug(f"[CHECK MARK] 偏移量: {shift}")
                     block = self._extract_rows(shift, self.block_size + shift)
-                    completed_objects.append((block, "check_mark"))
+                    completed_objects = {
+                        "object": block,
+                        "type": "check_mark_success",
+                        "mark_ends": mark_end
+                    }
                     self._remove_rows(self.block_size + shift - self.overlap*2)
-                    logger.debug(f"输出 正常图，固定块: 0 ~ {self.block_size}")
+                    logger.debug(
+                        f"[CHECK MARK]: 输出 正常图，固定块: 0 ~ {self.block_size}")
                 else:
                     self.problematic_pending = True
-                    completed_objects.append((block, "problematic"))
-                    logger.debug(f"固定块检测失败，定义为问题图:")
+                    completed_objects = {
+                        "object": block,
+                        "type": "check_mark_fail",
+                        "mark_ends": -np.inf
+                    }
+                    logger.debug(f"[CHECK MARK]: 固定块检测失败，定义为问题图:")
                     self.mode = "seek_mark"
             else:
-                logger.debug(f"check mark mode ：缓冲区不足，等待更多帧。")
+                logger.debug(f"[CHECK MARK] ：缓冲区不足，等待更多帧。")
         return completed_objects
 
     def _buffer_to_array(self):
@@ -170,8 +186,11 @@ if __name__ == "__main__":
         frame_name = frame_capture.current_file_name
         frame = frame[:, :frame_width_P]
         completed_objects = obj_stitcher.process_frame(frame)
-        for obj, obj_type in completed_objects:
-            logger.debug(f"检测到类型：{obj_type}")
+        if completed_objects:
+            obj = completed_objects["object"]
+            obj_type = completed_objects["type"]
+            mark_ends = completed_objects["mark_ends"]
+            logger.debug(f"---------RESULT---------{obj_type}")
             if not os.path.exists(os.path.join(out_path, obj_type)):
                 os.makedirs(os.path.join(out_path, obj_type))
             cv2.imwrite(os.path.join(out_path, obj_type,
