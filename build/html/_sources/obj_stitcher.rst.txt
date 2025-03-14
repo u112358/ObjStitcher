@@ -1,7 +1,0 @@
-obj\_stitcher module
-====================
-
-.. automodule:: obj_stitcher
-   :members:
-   :undoc-members:
-   :show-inheritance:
