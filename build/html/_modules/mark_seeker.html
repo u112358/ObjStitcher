@@ -1,0 +1,236 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mark_seeker &mdash; ObjStitcher alpha documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/documentation_options.js?v=1f169f65"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ObjStitcher
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">ObjStitcher</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ObjStitcher</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">mark_seeker</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for mark_seeker</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">inf</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">logging_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+
+
+<div class="viewcode-block" id="MarkSeeker">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.MarkSeeker">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MarkSeeker</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+
+<div class="viewcode-block" id="MarkSeeker.seek_mark">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.MarkSeeker.seek_mark">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">seek_mark</span><span class="p">():</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="MarkSeeker.check_mark">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.MarkSeeker.check_mark">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_mark</span><span class="p">():</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="KongboSeeker">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.KongboSeeker">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">KongboSeeker</span><span class="p">(</span><span class="n">MarkSeeker</span><span class="p">):</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+<div class="viewcode-block" id="KongboSeeker.seek_mark">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.KongboSeeker.seek_mark">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">seek_mark</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">buffer</span><span class="p">,</span> <span class="n">obj_width</span><span class="p">,</span> <span class="n">mark_length</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;seek_mark&quot;</span><span class="p">,</span> <span class="n">visiable</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">ratio</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="n">scaled_w</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">buffer</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">)</span>
+            <span class="n">scaled_h</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">buffer</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">)</span>
+            <span class="n">_image</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span> <span class="p">(</span><span class="n">scaled_w</span><span class="p">,</span> <span class="n">scaled_h</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_image</span> <span class="o">=</span> <span class="n">buffer</span>
+
+        <span class="k">if</span> <span class="n">visiable</span><span class="p">:</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;image&#39;</span><span class="p">,</span> <span class="n">_image</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+        <span class="c1"># 根据缩放比例调整相关参数</span>
+        <span class="k">if</span> <span class="n">ratio</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="n">obj_width</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">obj_width</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">)</span>
+            <span class="n">mark_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">mark_length</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">)</span>
+
+        <span class="n">cut_edge_coefficient</span> <span class="o">=</span> <span class="mf">0.2</span>  <span class="c1"># 剪切系数</span>
+        <span class="n">margin</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">cut_edge_coefficient</span> <span class="o">*</span> <span class="n">obj_width</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">margin</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">margin</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># 只看中间部分，避免边缘的干扰，也可以在前处理进行处理，那这里就不需要了</span>
+        <span class="n">roi</span> <span class="o">=</span> <span class="n">_image</span><span class="p">[:,</span> <span class="n">margin</span><span class="p">:</span><span class="o">-</span><span class="n">margin</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">visiable</span><span class="p">:</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;roi&#39;</span><span class="p">,</span> <span class="n">roi</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">roi</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">roi</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_BGR2GRAY</span><span class="p">)</span>
+        <span class="n">binary</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">threshold</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">THRESH_BINARY</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">visiable</span><span class="p">:</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;binary&#39;</span><span class="p">,</span> <span class="n">binary</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+        <span class="n">num_labels</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">stats</span><span class="p">,</span> <span class="n">centroids</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">connectedComponentsWithStats</span><span class="p">(</span>
+            <span class="n">binary</span><span class="p">,</span> <span class="n">connectivity</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">ltype</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">CV_32S</span><span class="p">)</span>
+
+        <span class="n">max_area</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">max_label</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">valid_labels</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">threshold</span> <span class="o">=</span> <span class="n">mark_length</span> <span class="o">*</span> <span class="n">obj_width</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="mi">2</span><span class="o">*</span><span class="n">cut_edge_coefficient</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.9</span>
+
+        <span class="c1"># 从 1 开始遍历（假设 0 为背景）</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_labels</span><span class="p">):</span>
+            <span class="n">area</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="n">label</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">CC_STAT_AREA</span><span class="p">]</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;threshold: </span><span class="si">{</span><span class="n">threshold</span><span class="si">}</span><span class="s2">, area: </span><span class="si">{</span><span class="n">area</span><span class="si">}</span><span class="s2">, label: </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">area</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">:</span>
+                <span class="n">valid_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">area</span> <span class="o">&gt;</span> <span class="n">max_area</span><span class="p">:</span>
+                    <span class="n">max_area</span> <span class="o">=</span> <span class="n">area</span>
+                    <span class="n">max_label</span> <span class="o">=</span> <span class="n">label</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_labels</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="n">inf</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;seek_mark&quot;</span><span class="p">:</span>  <span class="c1"># 如果是seek mark模式，需要把所有的mark点位置返回</span>
+            <span class="k">pass</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;check_mark&quot;</span><span class="p">:</span>  <span class="c1"># 如果是check mark模式，只返回最大的mark点位置，其实这里逻辑不算完备，但是先这么做</span>
+            <span class="n">valid_labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">max_label</span><span class="p">]</span>
+
+        <span class="n">valid_mark_nums</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_labels</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;valid_mark_nums: </span><span class="si">{</span><span class="n">valid_mark_nums</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">valid_mark_ends</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">valid_labels</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="n">max_label</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">CC_STAT_LEFT</span><span class="p">]</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="n">max_label</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">CC_STAT_TOP</span><span class="p">]</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="n">max_label</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">CC_STAT_WIDTH</span><span class="p">]</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="n">max_label</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">CC_STAT_HEIGHT</span><span class="p">]</span>
+
+            <span class="n">left</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="n">top</span> <span class="o">=</span> <span class="n">y</span>
+            <span class="n">right</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">w</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">bottom</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">h</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">ratio</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+                <span class="n">bottom</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">bottom</span> <span class="o">/</span> <span class="n">ratio</span><span class="p">)</span>
+            <span class="n">valid_mark_ends</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bottom</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;valid_mark_nums: </span><span class="si">{</span><span class="n">valid_mark_nums</span><span class="si">}</span><span class="s2"> valid_mark_ends:</span><span class="si">{</span><span class="n">valid_mark_ends</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="n">valid_mark_nums</span><span class="p">,</span> <span class="n">valid_mark_ends</span></div>
+
+
+<div class="viewcode-block" id="KongboSeeker.check_mark">
+<a class="viewcode-back" href="../mark_seeker.html#mark_seeker.KongboSeeker.check_mark">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_mark</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">obj_width</span><span class="p">,</span> <span class="n">mark_length</span><span class="p">,</span> <span class="n">mark_roi</span><span class="p">,</span> <span class="n">margin</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">visiable</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">mark_roi</span>
+        <span class="n">start_x</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="n">end_x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">w</span>
+        <span class="n">start_y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="n">margin</span>
+        <span class="n">end_y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">h</span> <span class="o">+</span> <span class="n">margin</span>
+        <span class="n">roi</span> <span class="o">=</span> <span class="n">block</span><span class="p">[</span><span class="n">start_y</span><span class="p">:</span><span class="n">end_y</span><span class="p">,</span> <span class="n">start_x</span><span class="p">:</span><span class="n">end_x</span><span class="p">]</span>
+        <span class="n">mark_exists</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mark_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">seek_mark</span><span class="p">(</span>
+            <span class="n">roi</span><span class="p">,</span> <span class="n">obj_width</span><span class="p">,</span> <span class="n">mark_length</span><span class="p">,</span> <span class="n">ratio</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;check_mark&quot;</span><span class="p">,</span> <span class="n">visiable</span><span class="o">=</span><span class="n">visiable</span><span class="p">)</span>
+        <span class="n">mark_end_in_block</span> <span class="o">=</span> <span class="n">start_y</span> <span class="o">+</span> <span class="n">mark_end</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">mark_exists</span><span class="p">,</span> <span class="n">mark_end_in_block</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Bingzhang Hu.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

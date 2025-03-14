@@ -1,0 +1,7 @@
+frame\_capturer module
+======================
+
+.. automodule:: frame_capturer
+   :members:
+   :undoc-members:
+   :show-inheritance:

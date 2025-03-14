@@ -1,0 +1,414 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>obj_stitcher &mdash; ObjStitcher alpha documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/documentation_options.js?v=1f169f65"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ObjStitcher
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">ObjStitcher</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ObjStitcher</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">obj_stitcher</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for obj_stitcher</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mark_seeker</span><span class="w"> </span><span class="kn">import</span> <span class="n">KongboSeeker</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">logging_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+
+
+<span class="n">__DEBUG__</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<div class="viewcode-block" id="ObjStitcher">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ObjStitcher</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    ObjStitcher is a class designed to process frames of an object and stitch them together based on detected marks.</span>
+<span class="sd">    Attributes:</span>
+<span class="sd">        object_length_pixels (int): The length of the object in pixels.</span>
+<span class="sd">        input_type (str): The type of input, either &#39;aligned&#39; or &#39;not_aligned&#39;.</span>
+<span class="sd">        mark_to_end (int): The distance from the mark to the end of the object.</span>
+<span class="sd">        overlap (int): The overlap in pixels.</span>
+<span class="sd">        block_size (int): The size of the block in pixels.</span>
+<span class="sd">        mark_roi (list): The region of interest for the mark.</span>
+<span class="sd">        buffer (list): A list to store consecutive frames.</span>
+<span class="sd">        mode (str): The current mode, either &quot;seek_mark&quot; or &quot;check_mark&quot;.</span>
+<span class="sd">        seek_mark (function): A function to seek marks.</span>
+<span class="sd">        check_mark (function): A function to check marks.</span>
+<span class="sd">        frame_id (int): The current frame ID.</span>
+<span class="sd">        frame_list (list): A list of frame IDs.</span>
+<span class="sd">    Methods:</span>
+<span class="sd">        process_frame(frame, reset_signal=False):</span>
+<span class="sd">            Processes a single frame and updates the buffer and mode accordingly.</span>
+<span class="sd">                frame (np.ndarray): The frame to process.</span>
+<span class="sd">                reset_signal (bool, optional): If True, resets the object. Defaults to False.</span>
+<span class="sd">                dict: A dictionary containing the completed object and its type.</span>
+<span class="sd">        _buffer_to_array():</span>
+<span class="sd">            Concatenates all frames in the buffer to a single array.</span>
+<span class="sd">        _buffer_total_rows():</span>
+<span class="sd">            Calculates the total number of rows in all frames stored in the buffer.</span>
+<span class="sd">        _extract_rows(start, end):</span>
+<span class="sd">                np.ndarray or None: A concatenated array of the extracted rows if any rows are within the range, otherwise None.</span>
+<span class="sd">        _remove_rows(num_rows):</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mark_seeker</span><span class="p">,</span> <span class="n">object_length_MM</span><span class="p">,</span> <span class="n">cam_MM_per_P_Y</span><span class="p">,</span> <span class="n">mark_length</span><span class="p">,</span> <span class="n">frame_width_P</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;aligned&#39;</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the ObjStitcher class with the given parameters.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            mark_seeker (object): An object responsible for seeking and checking marks.</span>
+<span class="sd">            object_length_MM (float): The length of the object in millimeters.</span>
+<span class="sd">            cam_MM_per_P_Y (float): The camera&#39;s millimeters per pixel in the Y direction.</span>
+<span class="sd">            mark_length (int): The length of the mark in pixels.</span>
+<span class="sd">            frame_width_P (int): The width of the frame in pixels.</span>
+<span class="sd">            input_type (str, optional): The type of input, either &#39;aligned&#39; or &#39;not_aligned&#39;. Defaults to &#39;aligned&#39;.</span>
+<span class="sd">            overlap (int, optional): The overlap in pixels. Defaults to 100.</span>
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the input_type is not &#39;aligned&#39; or &#39;not_aligned&#39;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">object_length_pixels</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+            <span class="nb">round</span><span class="p">(</span><span class="n">object_length_MM</span> <span class="o">/</span> <span class="n">cam_MM_per_P_Y</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span> <span class="o">=</span> <span class="n">mark_length</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_type</span> <span class="o">=</span> <span class="n">input_type</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_type</span> <span class="o">==</span> <span class="s2">&quot;aligned&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_type</span> <span class="o">==</span> <span class="s2">&quot;not_aligned&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_length_pixels</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;input type must be &#39;aligned&#39; or &#39;not_aligned&#39;&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">=</span> <span class="n">overlap</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_length_pixels</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_width_P</span> <span class="o">=</span> <span class="n">frame_width_P</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mark_roi</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_length_pixels</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span><span class="p">,</span>
+                         <span class="bp">self</span><span class="o">.</span><span class="n">frame_width_P</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># 存放连续帧</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="s2">&quot;seek_mark&quot;</span>  <span class="c1"># 初始为seek mark模式</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">mark_seeker</span> <span class="o">=</span> <span class="n">mark_seeker</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">seek_mark</span><span class="p">:</span> <span class="n">function</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_seeker</span><span class="o">.</span><span class="n">seek_mark</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_mark</span><span class="p">:</span> <span class="n">function</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_seeker</span><span class="o">.</span><span class="n">check_mark</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_list</span> <span class="o">=</span> <span class="p">[]</span>
+
+<div class="viewcode-block" id="ObjStitcher.process_frame">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher.process_frame">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_frame</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">reset_signal</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Process a single frame and manage the internal buffer and state.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            frame (numpy.ndarray): The frame to be processed.</span>
+<span class="sd">            reset_signal (bool, optional): If True, resets the internal state by reinitializing the object. Defaults to False.</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: A dictionary containing the completed object and its metadata. The dictionary has the following keys:</span>
+<span class="sd">                - &quot;object&quot; (numpy.ndarray): The processed object or block.</span>
+<span class="sd">                - &quot;type&quot; (str): The type of processing result, either &quot;seek_mark_success&quot;, &quot;check_mark_success&quot;, or &quot;check_mark_fail&quot;.</span>
+<span class="sd">                - &quot;mark_ends&quot; (list or int): The end positions of the marks found, or -np.inf if mark check failed.</span>
+<span class="sd">                - &quot;frame_list&quot; (list, optional): List of frame IDs, included only for &quot;seek_mark_success&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">reset_signal</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">frame_id</span><span class="p">)</span>
+        <span class="n">completed_objects</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+        <span class="n">total_rows</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer_total_rows</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[READ FRAME] 当前缓冲区总行数: </span><span class="si">{</span><span class="n">total_rows</span><span class="si">}</span><span class="s2">, 模式: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;seek_mark&quot;</span><span class="p">:</span>
+            <span class="n">mark_exists</span><span class="p">,</span> <span class="n">mark_nums</span><span class="p">,</span> <span class="n">mark_ends</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">seek_mark</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_buffer_to_array</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">frame_width_P</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span><span class="p">,</span> <span class="n">visiable</span><span class="o">=</span><span class="n">__DEBUG__</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;[SEEK MARK] result: </span><span class="si">{</span><span class="n">mark_exists</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">mark_exists</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">total_rows</span> <span class="o">&gt;=</span> <span class="n">mark_ends</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span><span class="p">:</span>
+                    <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_rows</span><span class="p">(</span>
+                        <span class="mi">0</span><span class="p">,</span> <span class="n">mark_ends</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_remove_rows</span><span class="p">(</span>
+                        <span class="n">mark_ends</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span><span class="p">)</span>
+                    <span class="n">completed_objects</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="n">obj</span><span class="p">,</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;seek_mark_success&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;mark_ends&quot;</span><span class="p">:</span> <span class="n">mark_ends</span><span class="p">,</span>
+                        <span class="s2">&quot;frame_list&quot;</span><span class="p">:</span> <span class="p">[]</span>
+                    <span class="p">}</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="s2">&quot;check_mark&quot;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[SEEK MARK] 缓冲区不足，等待更多帧。&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;check_mark&quot;</span><span class="p">:</span>
+
+            <span class="k">if</span> <span class="n">total_rows</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span><span class="p">:</span>
+                <span class="n">block</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_rows</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span><span class="p">)</span>
+                <span class="n">margin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span><span class="o">//</span><span class="mi">2</span>
+                <span class="n">mark_exists</span><span class="p">,</span> <span class="n">mark_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_mark</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">frame_width_P</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_length</span><span class="p">,</span>
+                                                        <span class="bp">self</span><span class="o">.</span><span class="n">mark_roi</span><span class="p">,</span> <span class="n">margin</span><span class="p">,</span> <span class="n">visiable</span><span class="o">=</span><span class="n">__DEBUG__</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">mark_exists</span><span class="p">:</span>
+                    <span class="n">standard_mark_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mark_to_end</span>
+                    <span class="n">shift</span> <span class="o">=</span> <span class="n">mark_end</span> <span class="o">-</span> <span class="n">standard_mark_end</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;[CHECK MARK]: mark end: </span><span class="si">{</span><span class="n">mark_end</span><span class="si">}</span><span class="s2">, standard mark end: </span><span class="si">{</span><span class="n">standard_mark_end</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[CHECK MARK] 偏移量: </span><span class="si">{</span><span class="n">shift</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">block</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_rows</span><span class="p">(</span><span class="n">shift</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span> <span class="o">+</span> <span class="n">shift</span><span class="p">)</span>
+                    <span class="n">completed_objects</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="n">block</span><span class="p">,</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;check_mark_success&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;mark_ends&quot;</span><span class="p">:</span> <span class="n">mark_end</span>
+                    <span class="p">}</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_remove_rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">block_size</span> <span class="o">+</span> <span class="n">shift</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;[CHECK MARK]: 输出 正常图，固定块: 0 ~ </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">block_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">problematic_pending</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">completed_objects</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="n">block</span><span class="p">,</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;check_mark_fail&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;mark_ends&quot;</span><span class="p">:</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+                    <span class="p">}</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[CHECK MARK]: 固定块检测失败，定义为问题图:&quot;</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="s2">&quot;seek_mark&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[CHECK MARK] ：缓冲区不足，等待更多帧。&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">completed_objects</span></div>
+
+
+<div class="viewcode-block" id="ObjStitcher._buffer_to_array">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher._buffer_to_array">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_buffer_to_array</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Concatenate all frames in the buffer to a single array.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray: A concatenated array of all frames in the buffer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">buffer</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ObjStitcher._buffer_total_rows">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher._buffer_total_rows">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_buffer_total_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the total number of rows in all frames stored in the buffer.</span>
+
+<span class="sd">        This method iterates over each frame in the buffer and sums up the number</span>
+<span class="sd">        of rows (shape[0]) for each frame.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            int: The total number of rows in all frames in the buffer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ObjStitcher._extract_rows">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher._extract_rows">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_extract_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Extracts and concatenates rows from frames in the buffer within the specified range.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            start (int): The starting row index (inclusive).</span>
+<span class="sd">            end (int): The ending row index (exclusive).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray or None: A concatenated array of the extracted rows if any rows are within the range,</span>
+<span class="sd">                                otherwise None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">segments</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">total</span> <span class="o">+</span> <span class="n">rows</span> <span class="o">&lt;=</span> <span class="n">start</span><span class="p">:</span>
+                <span class="n">total</span> <span class="o">+=</span> <span class="n">rows</span>
+                <span class="k">continue</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">start</span> <span class="o">-</span> <span class="n">total</span><span class="p">)</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">end</span> <span class="o">-</span> <span class="n">total</span><span class="p">)</span>
+            <span class="n">segments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">])</span>
+            <span class="n">total</span> <span class="o">+=</span> <span class="n">rows</span>
+            <span class="k">if</span> <span class="n">total</span> <span class="o">&gt;=</span> <span class="n">end</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">segments</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">segments</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="ObjStitcher._remove_rows">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.ObjStitcher._remove_rows">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_remove_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_rows</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes a specified number of rows from the beginning of each frame in the buffer.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            num_rows (int): The number of rows to remove from the buffer.</span>
+
+<span class="sd">        The method iterates through each frame in the buffer and removes the specified number of rows.</span>
+<span class="sd">        If the number of rows to remove is greater than or equal to the number of rows in a frame,</span>
+<span class="sd">        the entire frame is skipped. The remaining frames are adjusted accordingly and stored back</span>
+<span class="sd">        in the buffer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rows_to_remove</span> <span class="o">=</span> <span class="n">num_rows</span>
+        <span class="n">new_buffer</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">rows_to_remove</span> <span class="o">&gt;=</span> <span class="n">rows</span><span class="p">:</span>
+                <span class="n">rows_to_remove</span> <span class="o">-=</span> <span class="n">rows</span>
+                <span class="k">continue</span>
+            <span class="n">new_buffer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame</span><span class="p">[</span><span class="n">rows_to_remove</span><span class="p">:])</span>
+            <span class="n">rows_to_remove</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="n">new_buffer</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="resize_image">
+<a class="viewcode-back" href="../obj_stitcher.html#obj_stitcher.resize_image">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resize_image</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">0.01</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Resize the given image by a specified ratio.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">    image (numpy.ndarray): The input image to be resized.</span>
+<span class="sd">    ratio (float, optional): The ratio by which to resize the image. Default is 0.01.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">    numpy.ndarray: The resized image.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">ratio</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="n">ratio</span><span class="p">)))</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">test_path_list</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;1&#39;</span><span class="p">,</span> <span class="s1">&#39;2&#39;</span><span class="p">,</span> <span class="s1">&#39;3&#39;</span><span class="p">,</span> <span class="s1">&#39;5&#39;</span><span class="p">,</span> <span class="s1">&#39;6&#39;</span><span class="p">,</span> <span class="s1">&#39;7&#39;</span><span class="p">,</span> <span class="s1">&#39;8&#39;</span><span class="p">,</span> <span class="s1">&#39;9&#39;</span><span class="p">,</span> <span class="s1">&#39;10&#39;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">test_path_list</span><span class="p">:</span>
+        <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;D:\data&#39;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="n">settings_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">&quot;info.json&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">settings_file</span><span class="p">):</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">settings_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">json_content</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+            <span class="n">object_length_MM</span> <span class="o">=</span> <span class="n">json_content</span><span class="p">[</span><span class="s2">&quot;object_length_MM&quot;</span><span class="p">]</span>
+            <span class="n">mark_length</span> <span class="o">=</span> <span class="n">json_content</span><span class="p">[</span><span class="s2">&quot;mark_length&quot;</span><span class="p">]</span>
+            <span class="n">cam_MM_per_P_Y</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="c1"># frame_width_P = 8192</span>
+            <span class="n">frame_width_P</span> <span class="o">=</span> <span class="mi">7200</span>  <span class="c1"># 测试图有点歪，我为了方便用这个截了下右边部分</span>
+            <span class="n">overlap</span> <span class="o">=</span> <span class="mi">200</span>
+            <span class="k">if</span> <span class="n">overlap</span> <span class="o">&gt;</span> <span class="n">mark_length</span><span class="o">//</span><span class="mi">3</span><span class="p">:</span>
+                <span class="n">overlap</span> <span class="o">=</span> <span class="n">mark_length</span><span class="o">//</span><span class="mi">3</span>
+            <span class="n">mark_seeker</span> <span class="o">=</span> <span class="n">KongboSeeker</span><span class="p">()</span>
+            <span class="n">obj_stitcher</span> <span class="o">=</span> <span class="n">ObjStitcher</span><span class="p">(</span>
+                <span class="n">mark_seeker</span><span class="p">,</span> <span class="n">object_length_MM</span><span class="p">,</span> <span class="n">cam_MM_per_P_Y</span><span class="p">,</span> <span class="n">mark_length</span><span class="p">,</span> <span class="n">frame_width_P</span><span class="p">,</span> <span class="s2">&quot;not_aligned&quot;</span><span class="p">,</span> <span class="n">overlap</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="s2">&quot;settings file &#39;info.json&#39; not found!&quot;</span><span class="p">)</span>
+
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">file_path</span> <span class="o">+</span> <span class="s2">&quot;_out&quot;</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">obj_stitcher</span><span class="o">.</span><span class="n">input_type</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">out_path</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">frame_capturer</span><span class="w"> </span><span class="kn">import</span> <span class="n">FrameCapturer</span>
+        <span class="n">frame_capture</span> <span class="o">=</span> <span class="n">FrameCapturer</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s1">&#39;local&#39;</span><span class="p">,</span> <span class="n">file_path</span><span class="o">=</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">frame_capture</span><span class="o">.</span><span class="n">ready_to_capture</span><span class="p">():</span>
+            <span class="n">frame</span> <span class="o">=</span> <span class="n">frame_capture</span><span class="o">.</span><span class="n">next_frame</span><span class="p">()</span>
+            <span class="n">frame_name</span> <span class="o">=</span> <span class="n">frame_capture</span><span class="o">.</span><span class="n">current_file_name</span>
+            <span class="n">frame</span> <span class="o">=</span> <span class="n">frame</span><span class="p">[:,</span> <span class="p">:</span><span class="n">frame_width_P</span><span class="p">]</span>
+            <span class="n">completed_objects</span> <span class="o">=</span> <span class="n">obj_stitcher</span><span class="o">.</span><span class="n">process_frame</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">completed_objects</span><span class="p">:</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="n">completed_objects</span><span class="p">[</span><span class="s2">&quot;object&quot;</span><span class="p">]</span>
+                <span class="n">obj_type</span> <span class="o">=</span> <span class="n">completed_objects</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span>
+                <span class="n">mark_ends</span> <span class="o">=</span> <span class="n">completed_objects</span><span class="p">[</span><span class="s2">&quot;mark_ends&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="s2">&quot;fail&quot;</span> <span class="ow">in</span> <span class="n">obj_type</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;---------RESULT---------</span><span class="si">{</span><span class="n">obj_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;---------RESULT---------</span><span class="si">{</span><span class="n">obj_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">obj_type</span><span class="p">)):</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">obj_type</span><span class="p">))</span>
+                <span class="n">cv2</span><span class="o">.</span><span class="n">imwrite</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">obj_type</span><span class="p">,</span>
+                            <span class="n">frame_name</span><span class="p">),</span> <span class="n">resize_image</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">))</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Bingzhang Hu.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
