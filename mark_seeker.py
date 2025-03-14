@@ -65,15 +65,15 @@ class KongboSeeker(MarkSeeker):
         max_area = 0
         max_label = 0
         valid_labels = []
-        threshold = mark_length * obj_width * (1-2*cut_edge_coefficient) * 0.95
+        threshold = mark_length * obj_width * (1-2*cut_edge_coefficient) * 0.9
 
         # 从 1 开始遍历（假设 0 为背景）
         for label in range(1, num_labels):
             area = stats[label, cv2.CC_STAT_AREA]
+            logger.debug(
+                f"threshold: {threshold}, area: {area}, label: {label}")
             if area > threshold:
                 valid_labels.append(label)
-                logger.debug(
-                    f"threshold: {threshold}, area: {area}, label: {label}")
                 if area > max_area:
                     max_area = area
                     max_label = label
@@ -102,6 +102,8 @@ class KongboSeeker(MarkSeeker):
             if ratio != 1.0:
                 bottom = int(bottom / ratio)
             valid_mark_ends.append(bottom)
+        logger.debug(
+            f"valid_mark_nums: {valid_mark_nums} valid_mark_ends:{valid_mark_ends}")
         return True, valid_mark_nums, valid_mark_ends
 
     def check_mark(self, block, obj_width, mark_length, mark_roi, margin, ratio=0.05, visiable=False):
