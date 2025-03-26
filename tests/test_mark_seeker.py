@@ -14,7 +14,7 @@ class TestKongboSeeker(unittest.TestCase):
         obj_width = 10
         mark_length = 10
         result = self.seeker.seek_mark(buffer, obj_width, mark_length)
-        self.assertEqual(result, (False, -1, -np.inf))
+        self.assertEqual(result, (False, 0, [-np.inf]))
 
 
 if __name__ == '__main__':

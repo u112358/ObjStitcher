@@ -10,6 +10,34 @@ __DEBUG__ = False
 
 class ObjStitcher:
     def __init__(self, mark_seeker, object_length_MM, cam_mm_per_pixel_Y, mark_length, frame_width_P, overlap=100):
+        """
+        Initializes the ObjStitcher object with the given parameters.
+
+        Args:
+            mark_seeker (object): An object responsible for seeking and checking marks.
+            object_length_MM (float): The length of the object in millimeters.
+            cam_mm_per_pixel_Y (float): The camera's millimeters per pixel in the Y direction.
+            mark_length (int): The length of the mark in pixels.
+            frame_width_P (int): The width of the frame in pixels.
+            overlap (int, optional): The overlap in pixels. Defaults to 100.
+
+        Attributes:
+            object_length_pixels (int): The length of the object in pixels.
+            mark_length (int): The length of the mark in pixels.
+            overlap (int): The overlap in pixels.
+            block_size (int): The size of the block in pixels.
+            frame_width_P (int): The width of the frame in pixels.
+            mark_roi (list): The region of interest for the mark.
+            buffer (list): A buffer to store continuous frames.
+            mode (str): The current mode, initially set to "seek_mark".
+            global_mark_pos (None): The global position of the mark, initially None.
+            stitched_object (None): The stitched object, initially None.
+            mark_seeker (object): An object responsible for seeking and checking marks.
+            seek_mark (function): A function to seek the mark.
+            check_mark (function): A function to check the mark.
+            frame_id (int): The current frame ID, initially 0.
+            frame_list (list): A list to store frames.
+        """
         self.object_length_pixels = int(
             round(object_length_MM / cam_mm_per_pixel_Y))
         self.mark_length = mark_length
@@ -32,6 +60,26 @@ class ObjStitcher:
         self.frame_list = []
 
     def process_frame(self, frame):
+        """
+        Process a single frame and manage the internal buffer and state.
+
+        This method processes an incoming frame, updates the internal buffer, and 
+        performs operations based on the current mode. It handles two modes:
+        "seek_mark" and "check_mark". Depending on the mode, it either seeks for 
+        a mark in the buffer or checks the mark in a fixed block size. The method 
+        returns a dictionary containing the completed objects and their types.
+
+        Args:
+            frame (ndarray): The frame to be processed.
+
+        Returns:
+            dict: A dictionary containing the completed objects and their types. 
+                  The dictionary has the following keys:
+                  - "object": The processed object (frame or block).
+                  - "type": The type of the completed object, either "seek_mark_success", 
+                            "check_mark_success", or "check_mark_fail".
+                  - "mark_ends": The end positions of the marks or -np.inf if mark check fails.
+        """
         self.frame_id += 1
         self.frame_list.append(self.frame_id)
         completed_objects = dict()
@@ -57,13 +105,11 @@ class ObjStitcher:
                     # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况
                     logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
-
             if total_rows >= self.block_size:
                 block = self._extract_rows(0, self.block_size)
                 margin = self.overlap//2
                 mark_exists, mark_end = self.check_mark(block, self.frame_width_P, self.mark_length,
                                                         self.mark_roi, margin, visiable=__DEBUG__)
-
                 if mark_exists:
                     standard_mark_end = self.block_size-self.overlap
                     shift = mark_end - standard_mark_end
@@ -141,6 +187,18 @@ class ObjStitcher:
         return np.concatenate(segments, axis=0) if segments else None
 
     def _remove_rows(self, num_rows):
+        """
+        Remove a specified number of rows from the frames in the buffer.
+
+        Args:
+            num_rows (int): The number of rows to remove from the buffer.
+
+        This method iterates through the frames in the buffer and removes the specified
+        number of rows from the beginning of each frame. If the number of rows to remove
+        exceeds the number of rows in a frame, the entire frame is removed. The remaining
+        frames are updated and stored back in the buffer.
+        """
+
         rows_to_remove = num_rows
         new_buffer = []
         for frame in self.buffer:
@@ -163,7 +221,9 @@ if __name__ == "__main__":
     if not os.path.exists(out_path):
         os.makedirs(out_path)
     settings_file = os.path.join(file_path, "info.json")
-    if os.path.exists(settings_file):
+    if not os.path.exists(settings_file):
+        raise FileNotFoundError("settings file 'info.json' not found!")
+    else:
         with open(settings_file, 'r') as f:
             json_content = json.load(f)
         object_length_MM = json_content["object_length_MM"]
@@ -172,8 +232,6 @@ if __name__ == "__main__":
         # frame_width_P = 8192
         frame_width_P = 7200  # 测试图有点歪，我为了方便用这个截了下右边部分
         overlap = 500
-    else:
-        raise FileNotFoundError("settings file 'info.json' not found!")
 
     mark_seeker = KongboSeeker()
     obj_stitcher = ObjStitcher(

@@ -65,7 +65,8 @@ class KongboSeeker(MarkSeeker):
         max_area = 0
         max_label = 0
         valid_labels = []
-        threshold = mark_length * obj_width * (1-2*cut_edge_coefficient) * 0.95
+        threshold = mark_length * obj_width * \
+            (1 - 2*cut_edge_coefficient) * 0.95
 
         # 从 1 开始遍历（假设 0 为背景）
         for label in range(1, num_labels):

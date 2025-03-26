@@ -12,7 +12,7 @@ class TestFrameCapturer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         print("Setting up for test")
-        cls.source_image_dir = r'D:/data/1'
+        cls.source_image_dir = r'./data/1'
         cls.test_image_dir = 'test_images'
         os.makedirs(cls.test_image_dir, exist_ok=True)
         # copy first three images from source_image_dir to test_image_dir with new names
