@@ -13,6 +13,7 @@ __DEBUG__ = True
 CAM_MUL_FACTOR = 1
 CAM_DIV_FACTOR = 1
 CAM_PULSE_PER_PIXEL = CAM_DIV_FACTOR / CAM_MUL_FACTOR
+CAM_DISTANCE = 2300
 
 
 class ObjStitcher:
@@ -182,21 +183,21 @@ class ObjStitcher:
             if mark_exists:
                 logger.info(f"料尾找到！总共有{mark_ends[0]}行！")
                 if self.input_type == "not_aligned":
-                    if mark_ends[0] - self.mark_length_P > 2300:
-
+                    if mark_ends[0] - self.mark_length_P > CAM_DISTANCE:
+                        # 如果料尾在当前buffer中距离buffer结束位置大于相机之间距离差，需要输出
                         first_object = self._extract_rows(
-                            0,
-                            mark_ends[0] - self.mark_length_P + self.overlap_P)
+                            0, mark_ends[0] - self.mark_length_P + self.overlap_P)
                         self._remove_rows(mark_ends[0] - self.mark_length_P -
                                           self.overlap_P)
                         completed_objects["object"] = first_object
                         completed_objects["type"] = "first_object"
                         self.mode = "check_mark"
-
+                        # 输出相关信息
                         frame_list_output = self.frame_list
                         frame_offsets_output = self.frame_offsets
                         completed_objects["frame_list"] = frame_list_output
                         completed_objects["frame_offsets"] = frame_offsets_output
+                        # 对frame list进行处理
                         self.frame_list = self.frame_list[-1:]
                         self.frame_offsets = []
                         lines_remain = self._buffer_total_rows()
@@ -210,7 +211,7 @@ class ObjStitcher:
 
                         return completed_objects
                 else:
-                    if mark_ends[0] > 2300:
+                    if mark_ends[0] > CAM_DISTANCE:
                         first_object = self._extract_rows(
                             0, mark_ends[0] + self.overlap_P)
                         self._remove_rows(mark_ends[0] - self.overlap_P)
