@@ -5,18 +5,20 @@ from logging_config import logger
 
 class FrameCapturer(object):
     """
-    FrameCapturer class for capturing frames from a local directory.
+    FrameCapturer class for capturing frames from a local directory or a camera.
     Attributes:
-        file_path (str): The path to the local file directory.
-        file_list (list): List of image files in the directory.
-        file_idx (int): Index of the current file being processed.
-        total_files (int): Total number of image files in the directory.
-        visiable (bool): A flag to set visibility of the frames.
+        file_path (str): The path to the local file if mode is 'local'.
+        file_list (list): List of image files in the specified directory.
+        current_file_idx (int): Index of the current file being processed.
+        current_file_name (str): Name of the current file being processed.
+        total_files (int): Total number of image files in the specified directory.
+        visiable (bool): A flag to set visibility.
+        mode (str): The mode of frame capturing. It can be 'camera' or 'local'.
     Methods:
+        __init__(mode='local', file_path=None, visiable=False):
         ready_to_capture():
         next_frame():
         _get_next_frame():
-        Internal method to read the next frame from the directory.
     """
 
     def __init__(self, mode='local', file_path=None, visiable=False):
