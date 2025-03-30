@@ -175,7 +175,7 @@ class ObjStitcher:
             self.current_frame_in_obj_start + frame.shape[0]
         ])
         self.current_frame_in_obj_start += frame.shape[0]
-
+        frame_pulse_output = []
         logger.debug(f"[READ FRAME] 当前缓冲区总行数: {total_rows}, 模式: {self.mode}")
 
         if self.mode == "seek_mark":
@@ -188,8 +188,8 @@ class ObjStitcher:
                 logger.info(f"料尾找到！总共有{mark_ends[0]}行！")
                 frame_pulse_output = []
                 for mark_end in mark_ends:
-                    frame_pulse_output.append(
-                        frame_pulse - (self._buffer_total_rows()-mark_end)*CAM_PULSE_PER_PIXEL)
+                    frame_pulse_output.append(int(
+                        frame_pulse - (self._buffer_total_rows()-mark_end)*CAM_PULSE_PER_PIXEL))
                 if self.need_to_find_first_object:
                     if self.input_type == "not_aligned":
                         # 如果涂膏区域长度>相机间的距离差，那么这个料应该当作一个完整料输出
@@ -201,10 +201,13 @@ class ObjStitcher:
                                               self.overlap_P)
                             completed_objects["object"] = first_object
                             completed_objects["type"] = "first_object"
-                            completed_objects["mark_starts"] = mark_starts
-                            completed_objects["mark_ends"] = mark_ends
+                            completed_objects["mark_starts"] = [
+                                mark_start - self.object_length_P for mark_start in mark_starts]
+                            completed_objects["mark_ends"] = [
+                                mark_end - self.object_length_P for mark_end in mark_ends]
                             # 这里要调整
-                            completed_objects["frame_pulse"] = frame_pulse_output
+                            completed_objects["frame_pulse"] = [
+                                (fp - self.object_length_P*CAM_PULSE_PER_PIXEL) for fp in frame_pulse_output]
                             self.mode = "check_mark"
 
                             self.frame_list = self.frame_list[-1:]
@@ -285,8 +288,8 @@ class ObjStitcher:
                     completed_objects["frame_pulse"] = frame_pulse_output
                     if self.need_to_find_first_object:
                         completed_objects["type"] = "first_object"
-                        completed_objects["mark_ends"] = mark_ends[0]
-                        completed_objects["mark_starts"] = mark_starts[0]
+                        completed_objects["mark_ends"] = mark_ends
+                        completed_objects["mark_starts"] = mark_starts
                         self.need_to_find_first_object = False
                     elif self.problematic_pending:
                         completed_objects["type"] = "problematic"
@@ -303,7 +306,7 @@ class ObjStitcher:
                     # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
-            logger.error(
+            logger.debug(
                 f"block_size:{self.block_size} total_rows:{total_rows}")
             if total_rows >= self.block_size:
                 block = self._extract_rows(0, self.block_size)
@@ -313,8 +316,8 @@ class ObjStitcher:
                     self.mark_roi, margin)
                 lines_remain = total_rows - self.block_size
                 block_pulse = frame_pulse - lines_remain * CAM_PULSE_PER_PIXEL
-                frame_pulse_output = block_pulse - (
-                    self.block_size - mark_end) * CAM_PULSE_PER_PIXEL
+                frame_pulse_output.append(block_pulse - (
+                    self.block_size - mark_end) * CAM_PULSE_PER_PIXEL)
 
                 if mark_exists:
                     standard_mark_end = self.block_size - self.overlap_P - self.mark_to_end
@@ -349,8 +352,8 @@ class ObjStitcher:
                     completed_objects = {
                         "object": block,
                         "type": "success",
-                        "mark_starts": mark_start,
-                        "mark_ends": mark_end,
+                        "mark_starts": [mark_start],
+                        "mark_ends": [mark_end],
                         "frame_list": frame_list_output,
                         "frame_offsets": frame_offsets_output,
                         "frame_pulse": frame_pulse_output
@@ -363,10 +366,10 @@ class ObjStitcher:
                     completed_objects = {
                         "object": block,
                         "type": "fail",
-                        "mark_starts": np.inf,
-                        "mark_ends": -np.inf,
-                        "frame_list": frame_list_output,
-                        "frame_offsets": frame_offsets_output
+                        "mark_starts": [np.inf],
+                        "mark_ends": [-np.inf],
+                        "frame_list": [],
+                        "frame_offsets": []
                     }
                     logger.debug(f"[CHECK MARK]: 固定块检测失败，定义为问题图:")
                     self.mode = "seek_mark"
@@ -490,7 +493,7 @@ class ObjStitcher:
         ret_dict = {
             '0': 0,  # 工具状态
             '1': 'error',  # msg
-            '2': [0, 0],  # 空箔涂膏交界处坐标
+            '2': [],  # 空箔涂膏交界处坐标
             '3': [],  # 空箔涂膏交界处直线
             '4': [],  # 大图
             '5': [],
@@ -498,7 +501,7 @@ class ObjStitcher:
             '7': [],  # 小图
             '8': [],  # 小图ID
             '9': 0,  # 重叠区大小overlap
-            '10': 0,  # 涂膏空箔交叠处脉冲
+            '10': [],  # 涂膏空箔交叠处脉冲
             '11': 999,
         }
 
@@ -511,12 +514,11 @@ class ObjStitcher:
             # mark_length_MM = args[1]
             jp_upside_type = args[0]
             jp_dimensions = args[1]
+            # jp_dimensions = [args[0], 2, args[1], 2]
             input_type_mapping = {"对齐端": "aligned", "非对齐端": "not_aligned"}
             input_type = input_type_mapping[args[2]]
             frame = copy.deepcopy(args[3][0])
             frame = self._squeeze_if_three_channels(frame)
-
-            logger.error(args)
 
             cam_MM_per_P_Y = args[5][0][0]
             if args[6] is not None:
@@ -582,42 +584,43 @@ class ObjStitcher:
                 ret_dict["11"] = 0
 
             completed_objects = self.process_frame(frame, frame_pulse)
-            ret_dict["1"] = completed_objects["type"]
-            if ("success" in completed_objects["type"]) or (
-                    "first_object" in completed_objects["type"]):
+            obj_type = completed_objects["type"]
+            mark_starts = completed_objects["mark_starts"]
+            mark_ends = completed_objects["mark_ends"]
+            frame_list = completed_objects["frame_list"]
+            frame_offsets = completed_objects["frame_offsets"]
+            frame_pulse = completed_objects["frame_pulse"]
+
+            ret_dict["1"] = obj_type
+            if ("success" in obj_type) or (
+                    "first_object" in obj_type):
                 ret_dict["0"] = 0
 
-                if isinstance(completed_objects["mark_starts"], list):
-                    mark_starts = float(completed_objects["mark_starts"][0])
-                else:
-                    mark_starts = float(completed_objects["mark_starts"])
+                for i, mark_start in enumerate(mark_starts):
+                    if input_type == "aligned":
+                        ret_dict["2"].append([mark_starts[i], mark_ends[i]])
+                        ret_dict["3"].append([[
+                            1, 0.0, mark_starts[i],
+                            float(self.frame_width_P), mark_starts[i]
+                        ], [
+                            1, 0.0, mark_ends[i],
+                            float(self.frame_width_P), mark_ends[i]
+                        ]])
+                        ret_dict["10"].append(
+                            [frame_pulse[i]-self.mark_length_P*CAM_PULSE_PER_PIXEL,
+                             frame_pulse[i]])
+                    else:
+                        ret_dict["2"].append([mark_ends[i], mark_starts[i]])
 
-                if isinstance(completed_objects["mark_ends"], list):
-                    mark_ends = float(completed_objects['mark_ends'][0])
-                else:
-                    mark_ends = float(completed_objects['mark_ends'])
-                if input_type == "aligned":
-                    ret_dict["2"] = [mark_starts, mark_ends]
-                    ret_dict["3"] = [[[
-                        1, 0.0, mark_starts,
-                        float(self.frame_width_P), mark_starts
-                    ], [
-                        1, 0.0, mark_ends,
-                        float(self.frame_width_P), mark_ends
-                    ]]]
-                else:
-                    ret_dict["2"] = [mark_ends, mark_starts]
-                    ret_dict["3"] = [[[
-                        1, 0.0, mark_ends,
-                        float(self.frame_width_P), mark_ends
-                    ], [
-                        1, 0.0, mark_starts,
-                        float(self.frame_width_P), mark_starts
-                    ]]]
-
-                frame_pulse = completed_objects["frame_pulse"]
-                if input_type == "aligned":
-                    frame_pulse = frame_pulse - self.mark_length_P * CAM_PULSE_PER_PIXEL
+                        ret_dict["3"].append([[
+                            1, 0.0, mark_ends[i],
+                            float(self.frame_width_P), mark_ends[i]
+                        ], [
+                            1, 0.0, mark_starts[i],
+                            float(self.frame_width_P), mark_starts[i]
+                        ]])
+                        ret_dict["10"].append(
+                            [frame_pulse[i], frame_pulse[i]-self.mark_length_P*CAM_PULSE_PER_PIXEL])
 
                 ret_dict["4"].append({'image': completed_objects["object"]})
                 ret_dict["5"] = completed_objects["frame_list"]
@@ -627,10 +630,9 @@ class ObjStitcher:
                 ret_dict["8"] = self.frame_id
                 ret_dict["9"] = self.overlap_P
                 # ret_dict["10"] = int(frame_pulse)
-                ret_dict["10"] = int(self.frame_pulse)
             else:
                 ret_dict["0"] = 1
-                ret_dict["2"] = [0, 0]
+                ret_dict["2"] = [[0, 0]]
                 ret_dict["3"] = [[[1.0, 0.0, 0.0, 0.0, 0.0]]]
                 ret_dict["4"].append({'image': None})
                 ret_dict["5"] = [87, 65, 73, 84]  # W A I T
@@ -639,13 +641,10 @@ class ObjStitcher:
                 ret_dict["7"].append({'image': frame})
                 ret_dict["8"] = self.frame_id
                 ret_dict["9"] = self.overlap_P
-                # ret_dict["10"] = 0
-                ret_dict["10"] = int(self.frame_pulse)
+                ret_dict["10"] = [[0, 0]]
 
         except Exception as e:
             traceback.print_exc()
             ret_dict["1"] = str(e)
-
-        ret_dict["10"] = int(self.frame_pulse)
         logger.info(ret_dict)
         return ret_dict
