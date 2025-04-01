@@ -1,4 +1,5 @@
 import copy
+import pdb
 import time
 import json
 import traceback
@@ -7,13 +8,12 @@ import numpy as np
 import os
 from mark_seeker import KongboSeeker
 from logging_config import logger
-import pdb
 
-__DEBUG__ = True
+__DEBUG__ = False
 CAM_MUL_FACTOR = 1
 CAM_DIV_FACTOR = 1
 CAM_PULSE_PER_PIXEL = CAM_DIV_FACTOR / CAM_MUL_FACTOR
-CAM_DISTANCE = 2300
+DISTANCE_BETWEEN_CAMS = 2300
 
 
 class ObjStitcher:
@@ -68,18 +68,19 @@ class ObjStitcher:
         Raises:
             ValueError: If the input_type is not 'aligned' or 'not_aligned'.
         """
+        # 像素精度
         self.cam_MM_per_P_Y = cam_MM_per_P_Y
-        self.obj_length_MM = jp_length_MM + mark_length_MM
-        self.object_length_P = int(round(self.obj_length_MM / cam_MM_per_P_Y))
+        # 整个物料的物理长度，单位mm
+        self.object_length_MM = jp_length_MM + mark_length_MM
+        # 换算出来的整个物料的像素长度
+        self.object_length_P = int(
+            round(self.object_length_MM / cam_MM_per_P_Y))
+        # 空箔像素长度
         self.mark_length_P = int(round(mark_length_MM / cam_MM_per_P_Y))
+        # 极片像素长度
         self.jp_length_P = self.object_length_P - self.mark_length_P
-        print(self.object_length_P,
-              self.mark_length_P,
-              jp_length_MM,
-              cam_MM_per_P_Y,
-              mark_length_MM,
-              frame_width_P,
-              flush=True)
+        # 入料方式， aligned 或者是 not_aligned
+        # TODO 这个要和其他人写的代码统一叫法
         self.input_type = input_type
         if self.input_type == "aligned":
             """
@@ -108,59 +109,63 @@ class ObjStitcher:
         else:
             raise ValueError("input type must be 'aligned' or 'not_aligned'")
 
+        # 每次输出物料时，物料上方和下方留的像素数量，便于找物料边缘，
+        # 同时能解决一部分因为物料长度公差引起的找不到空箔的情况
         self.overlap_P = overlap_P
+        # 输出的图大小，等于完整物料加上 上方和下方两块overlap的大小
         self.block_size = self.object_length_P + 2 * self.overlap_P
+        # 帧宽度，线宽，8K
         self.frame_width_P = frame_width_P
+        # 找空箔的roi，很显然这个和入料方式有关，与入料方式的关系体现在上面
+        # self.mark_to_end的赋值上了
         self.mark_roi = [
             0, self.jp_length_P + self.overlap_P - self.mark_to_end,
             self.frame_width_P, self.mark_length_P
         ]
 
+        # 有两种模式， 一种是每一帧放到list里，然后用的时候拼起来，一种是每次进来就拼
+        # 具体哪种速度快还没有结论，测出来差不多，这两种方式我都保留了，如果要切换的话，
+        # 下面取图，删buffer，算buffer size的函数都要切换过来
+
         # self.buffer = []
         self.buffer = None  # 存放连续帧
 
+        # 定义了一个找mark类，如果是其他种类的膜类，拼图的核心方法可以在外面改
         self.mark_seeker = mark_seeker
         self.seek_mark: function = self.mark_seeker.seek_mark
         self.check_mark: function = self.mark_seeker.check_mark
+
+        # 在没有开始固定行取图，判断是否存在mark模式之前，是找mark模式
         self.mode = "seek_mark"  # 初始为seek mark模式
 
+        # 为了后面的结果合并，需要把每一片料（每一个EA）由哪些帧组成的（frame_list)
+        # 每一帧在这个完整物料中的相对位置（frame_offsets）
+        # 保存起来
         self.frame_id = 0
         self.frame_list = []
         self.frame_offsets = []
         self.current_frame_in_obj_start = 0
         self.first_round = True
-
+        self.need_to_find_first_object = True
+        # 初始化flag，True表示初始化已经完成
         self.initialised = True  # 初始化成功
 
     def process_frame(self, frame, frame_pulse):
-        """
-        Process a single frame and manage the internal buffer and state.
-        Args:
-            frame (numpy.ndarray): The frame to be processed.
-            reset_signal (bool, optional): If True, resets the internal state by reinitializing the object. Defaults to False.
-        Returns:
-            dict: A dictionary containing the completed object and its metadata. The dictionary has the following keys:
-                - "object" (numpy.ndarray): The processed object or block.
-                - "type" (str): The type of processing result, either "seek_mark_success", "check_mark_success", or "check_mark_fail".
-                - "mark_ends" (list or int): The end positions of the marks found, or -np.inf if mark check failed.
-                - "frame_list" (list, optional): List of frame IDs, included only for "seek_mark_success".
-        """
-        completed_objects = dict()
+        # 初始化返回字典
         completed_objects = {
             "object": None,
             "type": 'pending',
+            "mark_starts": 0,
             "mark_ends": 0,
             "frame_list": [],
             "frame_offsets": [],
-            "frame_pulse": -1
+            "frame_pulse": 0
         }
 
         self.frame_id += 1
         self.frame_list.append(self.frame_id)
-        frame_list_output = []
-        frame_offsets_output = []
+
         if self.buffer is not None:
-            print(self.buffer.shape)
             self.buffer = np.vstack([self.buffer, frame])
         else:
             self.buffer = frame
@@ -171,78 +176,85 @@ class ObjStitcher:
             self.current_frame_in_obj_start + frame.shape[0]
         ])
         self.current_frame_in_obj_start += frame.shape[0]
-        print(f"total_rows:{total_rows}")
+        frame_pulse_output = []
         logger.debug(f"[READ FRAME] 当前缓冲区总行数: {total_rows}, 模式: {self.mode}")
-        # pdb.set_trace()
+
         if self.mode == "seek_mark":
-            mark_exists, mark_nums, mark_ends = self.seek_mark(
+            mark_exists, mark_nums, mark_starts, mark_ends = self.seek_mark(
                 self._buffer_to_array(), self.frame_width_P,
                 self.mark_length_P)
             logger.debug(f"[SEEK MARK] result: {mark_exists}")
-            frame_pulse_obtained = False
+
             if mark_exists:
                 logger.info(f"料尾找到！总共有{mark_ends[0]}行！")
-                if self.input_type == "not_aligned":
-                    if mark_ends[0] - self.mark_length_P > CAM_DISTANCE:
-                        # 如果料尾在当前buffer中距离buffer结束位置大于相机之间距离差，需要输出
-                        first_object = self._extract_rows(
-                            0, mark_ends[0] - self.mark_length_P + self.overlap_P)
-                        self._remove_rows(mark_ends[0] - self.mark_length_P -
-                                          self.overlap_P)
-                        completed_objects["object"] = first_object
-                        completed_objects["type"] = "first_object"
-                        self.mode = "check_mark"
-                        # 输出相关信息
-                        frame_list_output = self.frame_list
-                        frame_offsets_output = self.frame_offsets
-                        completed_objects["frame_list"] = frame_list_output
-                        completed_objects["frame_offsets"] = frame_offsets_output
-                        # 对frame list进行处理
-                        self.frame_list = self.frame_list[-1:]
-                        self.frame_offsets = []
-                        lines_remain = self._buffer_total_rows()
-                        self.current_frame_in_obj_start = lines_remain - frame.shape[
-                            0]
-                        self.frame_offsets.append([
-                            self.current_frame_in_obj_start,
-                            self.current_frame_in_obj_start + frame.shape[0]
-                        ])
-                        self.current_frame_in_obj_start += frame.shape[0]
+                frame_pulse_output = []
+                for mark_end in mark_ends:
+                    frame_pulse_output.append(int(
+                        frame_pulse - (self._buffer_total_rows()-mark_end)*CAM_PULSE_PER_PIXEL))
+                if self.need_to_find_first_object:
+                    if self.input_type == "not_aligned":
+                        # 如果涂膏区域长度>相机间的距离差，那么这个料应该当作一个完整料输出
+                        if mark_ends[0] - self.mark_length_P > DISTANCE_BETWEEN_CAMS:
+                            # 因为DISTANCE_BETWEEN_CAMS一般大于设定的overlap，所以不用担心buffer不够大
+                            first_object = self._extract_rows(
+                                0, mark_ends[0] - self.mark_length_P + self.overlap_P)
+                            self._remove_rows(mark_ends[0] - self.mark_length_P -
+                                              self.overlap_P)
+                            completed_objects["object"] = first_object
+                            completed_objects["type"] = "first_object"
+                            completed_objects["mark_starts"] = [
+                                mark_start - self.object_length_P for mark_start in mark_starts]
+                            completed_objects["mark_ends"] = [
+                                mark_end - self.object_length_P for mark_end in mark_ends]
+                            # 这里要调整
+                            completed_objects["frame_pulse"] = [
+                                (fp - self.object_length_P*CAM_PULSE_PER_PIXEL) for fp in frame_pulse_output]
+                            self.mode = "check_mark"
 
-                        return completed_objects
-                else:
-                    if mark_ends[0] > CAM_DISTANCE:
-                        first_object = self._extract_rows(
-                            0, mark_ends[0] + self.overlap_P)
-                        self._remove_rows(mark_ends[0] - self.overlap_P)
-                        completed_objects["object"] = first_object
-                        completed_objects["type"] = "first_object"
-                        self.mode = "check_mark"
+                            self.frame_list = self.frame_list[-1:]
+                            self.frame_offsets = []
+                            lines_remain = self._buffer_total_rows()
+                            self.current_frame_in_obj_start = lines_remain - \
+                                frame.shape[0]
+                            self.frame_offsets.append([
+                                self.current_frame_in_obj_start,
+                                self.current_frame_in_obj_start +
+                                frame.shape[0]
+                            ])
+                            self.current_frame_in_obj_start += frame.shape[0]
+                            self.need_to_find_first_object = False
+                            return completed_objects
+                    else:
+                        if mark_ends[0] > DISTANCE_BETWEEN_CAMS:
+                            first_object = self._extract_rows(
+                                0, mark_ends[0] + self.overlap_P)
+                            self._remove_rows(mark_ends[0] - self.overlap_P)
+                            completed_objects["object"] = first_object
+                            completed_objects["type"] = "first_object"
+                            completed_objects["mark_starts"] = mark_starts
+                            completed_objects["mark_ends"] = mark_ends
+                            completed_objects["frame_pulse"] = frame_pulse_output
+                            self.mode = "check_mark"
 
-                        frame_list_output = self.frame_list
-                        frame_offsets_output = self.frame_offsets
-                        completed_objects["frame_list"] = frame_list_output
-                        completed_objects["frame_offsets"] = frame_offsets_output
-                        self.frame_list = self.frame_list[-1:]
-                        self.frame_offsets = []
-                        lines_remain = self._buffer_total_rows()
-                        self.current_frame_in_obj_start = lines_remain - frame.shape[
-                            0]
-                        self.frame_offsets.append([
-                            self.current_frame_in_obj_start,
-                            self.current_frame_in_obj_start + frame.shape[0]
-                        ])
-                        self.current_frame_in_obj_start += frame.shape[0]
+                            self.frame_list = self.frame_list[-1:]
+                            self.frame_offsets = []
+                            lines_remain = self._buffer_total_rows()
+                            self.current_frame_in_obj_start = lines_remain - frame.shape[
+                                0]
+                            self.frame_offsets.append([
+                                self.current_frame_in_obj_start,
+                                self.current_frame_in_obj_start +
+                                frame.shape[0]
+                            ])
+                            self.current_frame_in_obj_start += frame.shape[0]
+                            self.need_to_find_first_object = False
+                            return completed_objects
 
-                        return completed_objects
-
-                if not frame_pulse_obtained:
-                    frame_pulse_output = frame_pulse - self.mark_to_end * CAM_PULSE_PER_PIXEL
-                    frame_pulse_obtained = True
+                # 前面两个都没满足，需要把前面残留的部分和后面一起输出
                 if total_rows >= mark_ends[
                         0] + self.mark_to_end + self.overlap_P:
                     # mark_ends[0] + self.mark_to_end 是该mark对应的一个完整物料的长度
-                    obj = self._extract_rows(
+                    block = self._extract_rows(
                         0, mark_ends[0] + self.mark_to_end + self.overlap_P)
                     self._remove_rows(mark_ends[0] + self.mark_to_end -
                                       self.overlap_P)
@@ -253,49 +265,63 @@ class ObjStitcher:
                         frame_list_output = self.frame_list
                         # 需要把每个帧在大图的相对位置输出
                         frame_offsets_output = self.frame_offsets
-                        self.frame_list = self.frame_list[-1:]
+                        nof_frames_to_keep = total_rows//(mark_ends[0]+self.mark_to_end-self.overlap_P)+1
+                        self.frame_list = self.frame_list[-nof_frames_to_keep:]
                         # 最后一帧还在buffer里， 比如 1,2 和3的一部分组成了一张图，3仍然在frame_list里
                         self.frame_offsets = []
                         self.current_frame_in_obj_start = \
                             total_rows - \
                             (mark_ends[0] - self.overlap_P + self.mark_to_end) - \
-                            frame.shape[0]
-                        self.frame_offsets.append([
-                            self.current_frame_in_obj_start,
-                            self.current_frame_in_obj_start + frame.shape[0]
-                        ])
-                        self.current_frame_in_obj_start += frame.shape[0]
+                            frame.shape[0]*nof_frames_to_keep
+                        for _ in range(nof_frames_to_keep):
+                            self.frame_offsets.append([
+                                self.current_frame_in_obj_start,
+                                self.current_frame_in_obj_start + frame.shape[0]
+                            ])
+                            self.current_frame_in_obj_start += frame.shape[0]
                     else:
+                        frame_list_output = self.frame_list
                         self.frame_list = []
                         self.current_frame_in_obj_start = 0
                         frame_offsets_output = self.frame_offsets
                         self.frame_offsets = []
 
-                    completed_objects = {
-                        "object": obj,
-                        "type": "success",
-                        "mark_ends": mark_ends,
-                        "frame_list": frame_list_output,
-                        "frame_offsets": frame_offsets_output,
-                        "frame_pulse": frame_pulse_output
-                    }
+                    completed_objects["object"] = block,
+                    completed_objects["frame_list"] = frame_list_output
+                    completed_objects["frame_offsets"] = frame_offsets_output
+                    completed_objects["frame_pulse"] = frame_pulse_output
+                    if self.need_to_find_first_object:
+                        completed_objects["type"] = "first_object"
+                        completed_objects["mark_ends"] = mark_ends
+                        completed_objects["mark_starts"] = mark_starts
+                        self.need_to_find_first_object = False
+                    elif self.problematic_pending:
+                        completed_objects["type"] = "problematic"
+                        completed_objects["mark_ends"] = mark_ends
+                        completed_objects["mark_starts"] = mark_starts
+                        self.problematic_pending = False
+                    else:
+                        # 这种情况应该不会出现
+                        completed_objects["type"] = "success"
+
                     self.mode = "check_mark"
+                    return completed_objects
                 else:
-                    # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况
+                    # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
-            logger.error(
+            logger.debug(
                 f"block_size:{self.block_size} total_rows:{total_rows}")
             if total_rows >= self.block_size:
                 block = self._extract_rows(0, self.block_size)
                 margin = self.overlap_P // 2  # 用于扩大ROI，判断是否有空箔
-                mark_exists, mark_end = self.check_mark(
+                mark_exists, mark_start, mark_end = self.check_mark(
                     block, self.frame_width_P, self.mark_length_P,
                     self.mark_roi, margin)
                 lines_remain = total_rows - self.block_size
                 block_pulse = frame_pulse - lines_remain * CAM_PULSE_PER_PIXEL
-                frame_pulse_output = block_pulse - (
-                    self.block_size - mark_end) * CAM_PULSE_PER_PIXEL
+                frame_pulse_output.append(block_pulse - (
+                    self.block_size - mark_end) * CAM_PULSE_PER_PIXEL)
 
                 if mark_exists:
                     standard_mark_end = self.block_size - self.overlap_P - self.mark_to_end
@@ -330,24 +356,29 @@ class ObjStitcher:
                     completed_objects = {
                         "object": block,
                         "type": "success",
-                        "mark_ends": mark_end,
+                        "mark_starts": [mark_start],
+                        "mark_ends": [mark_end],
                         "frame_list": frame_list_output,
                         "frame_offsets": frame_offsets_output,
                         "frame_pulse": frame_pulse_output
                     }
                     logger.debug(
                         f"[CHECK MARK]: 输出 正常图，固定块: 0 ~ {self.block_size}")
+                    return completed_objects
                 else:
                     self.problematic_pending = True
-                    completed_objects = {
-                        "object": block,
-                        "type": "fail",
-                        "mark_ends": -np.inf,
-                        "frame_list": frame_list_output,
-                        "frame_offsets": frame_offsets_output
-                    }
-                    logger.debug(f"[CHECK MARK]: 固定块检测失败，定义为问题图:")
+                    # completed_objects = {
+                    #     "object": block,
+                    #     "type": "fail",
+                    #     "mark_starts": [np.inf],
+                    #     "mark_ends": [-np.inf],
+                    #     "frame_list": [],
+                    #     "frame_offsets": [],
+                    #     "frame_pulse": 0,
+                    # }
+                    # logger.debug(f"[CHECK MARK]: 固定块检测失败，定义为问题图:")
                     self.mode = "seek_mark"
+                    # return completed_objects
             else:
                 logger.debug(f"[CHECK MARK] ：缓冲区不足，等待更多帧。")
         return completed_objects
@@ -467,31 +498,35 @@ class ObjStitcher:
         ret_dict = {
             '0': 0,  # 工具状态
             '1': 'error',  # msg
-            '2': 0,  # 空箔涂膏交界处坐标
+            '2': [],  # 空箔涂膏交界处坐标
             '3': [],  # 空箔涂膏交界处直线
             '4': [],  # 大图
             '5': [],
             '6': [],
             '7': [],  # 小图
             '8': [],  # 小图ID
-            '9': [],  # 重叠区大小overlap
+            '9': 0,  # 重叠区大小overlap
             '10': [],  # 涂膏空箔交叠处脉冲
             '11': 999,
         }
+
+        args = args[0]
+        frame_pulse = args[4][0]
+        # 暂时传入什么就输出什么
+        self.frame_pulse = frame_pulse
+
         try:
-            args = args[0]
             # jp_length_MM = args[0]
             # mark_length_MM = args[1]
             jp_upside_type = args[0]
             jp_dimensions = args[1]
+            # jp_dimensions = [args[0], 2, args[1], 2]
             input_type_mapping = {"对齐端": "aligned", "非对齐端": "not_aligned"}
             input_type = input_type_mapping[args[2]]
             frame = copy.deepcopy(args[3][0])
             frame = self._squeeze_if_three_channels(frame)
 
-            frame_pulse = args[4][0]
 
-            logger.error(args)
 
             cam_MM_per_P_Y = args[5][0][0]
             if args[6] is not None:
@@ -539,61 +574,76 @@ class ObjStitcher:
 
             jp_length_MM = jp_dimensions[0]
             mark_length_MM = jp_dimensions[2]
-
-            logger.error(
-                f"jp_length_MM:{jp_length_MM}, mark_length_MM:{mark_length_MM}"
-            )
-
             frame_width_P = frame.shape[1]
 
-            overlap_MM = 50  # 100 mm
+            overlap_MM = 50  # 50 mm
             if overlap_MM > mark_length_MM // 3:
                 overlap_MM = mark_length_MM // 3
             overlap_P = int(round(overlap_MM / cam_MM_per_P_Y))
-            mark_seeker = KongboSeeker()
             if not self.initialised:
+                mark_seeker = KongboSeeker()
                 self._init_timesai_tool(mark_seeker, jp_length_MM,
                                         mark_length_MM, cam_MM_per_P_Y,
                                         frame_width_P, input_type, overlap_P)
             if reset_signal == 5:
+                mark_seeker = KongboSeeker()
                 self._init_timesai_tool(mark_seeker, jp_length_MM,
                                         mark_length_MM, cam_MM_per_P_Y,
                                         frame_width_P, input_type, overlap_P)
                 ret_dict["11"] = 0
 
             completed_objects = self.process_frame(frame, frame_pulse)
-            ret_dict["1"] = completed_objects["type"]
-            if ("success" in completed_objects["type"]) or (
-                    "first_object" in completed_objects["type"]):
+            # if self.frame_id >=5:
+            #
+            #     pdb.set_trace()
+            obj_type = completed_objects["type"]
+            mark_starts = completed_objects["mark_starts"]
+            mark_ends = completed_objects["mark_ends"]
+            frame_list = completed_objects["frame_list"]
+            frame_offsets = completed_objects["frame_offsets"]
+            frame_pulse = completed_objects["frame_pulse"]
+
+            ret_dict["1"] = obj_type
+            if ("success" in obj_type) or (
+                    "first_object" in obj_type) or ("problematic" in obj_type):
                 ret_dict["0"] = 0
 
-                if isinstance(completed_objects["mark_ends"], list):
-                    ret_dict["2"] = completed_objects["mark_ends"][0]
-                    mark_loc = float(completed_objects['mark_ends'][0])
-                else:
-                    ret_dict["2"] = completed_objects["mark_ends"]
-                    mark_loc = float(completed_objects['mark_ends'])
+                for i, mark_start in enumerate(mark_starts):
+                    if input_type == "aligned":
+                        ret_dict["2"].append([mark_starts[i], mark_ends[i]])
+                        ret_dict["3"].append([[
+                            1, 0.0, mark_starts[i],
+                            float(self.frame_width_P), mark_starts[i]
+                        ], [
+                            1, 0.0, mark_ends[i],
+                            float(self.frame_width_P), mark_ends[i]
+                        ]])
+                        ret_dict["10"].append(
+                            [frame_pulse[i]-self.mark_length_P*CAM_PULSE_PER_PIXEL,
+                             frame_pulse[i]])
+                    else:
+                        ret_dict["2"].append([mark_ends[i], mark_starts[i]])
 
-                frame_pulse = completed_objects["frame_pulse"]
-                if input_type == "aligned":
-                    mark_loc = mark_loc - self.mark_length_P
-                    frame_pulse = frame_pulse - self.mark_length_P * CAM_PULSE_PER_PIXEL
-                    ret_dict["2"] = mark_loc
-                ret_dict["3"] = [[[
-                    1, 0.0, mark_loc,
-                    float(self.frame_width_P), mark_loc
-                ]]]
+                        ret_dict["3"].append([[
+                            1, 0.0, mark_ends[i],
+                            float(self.frame_width_P), mark_ends[i]
+                        ], [
+                            1, 0.0, mark_starts[i],
+                            float(self.frame_width_P), mark_starts[i]
+                        ]])
+                        ret_dict["10"].append(
+                            [frame_pulse[i], frame_pulse[i]-self.mark_length_P*CAM_PULSE_PER_PIXEL])
                 ret_dict["4"].append({'image': completed_objects["object"]})
-                ret_dict["5"] = completed_objects["frame_list"]
-                ret_dict["6"] = completed_objects["frame_offsets"]
+                ret_dict["5"] = frame_list
+                ret_dict["6"] = frame_offsets
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                 ret_dict["7"].append({'image': frame})
                 ret_dict["8"] = self.frame_id
                 ret_dict["9"] = self.overlap_P
-                ret_dict["10"] = frame_pulse
+                # ret_dict["10"] = int(frame_pulse)
             else:
                 ret_dict["0"] = 1
-                ret_dict["2"] = 0
+                ret_dict["2"] = [[0, 0]]
                 ret_dict["3"] = [[[1.0, 0.0, 0.0, 0.0, 0.0]]]
                 ret_dict["4"].append({'image': None})
                 ret_dict["5"] = [87, 65, 73, 84]  # W A I T
@@ -602,9 +652,10 @@ class ObjStitcher:
                 ret_dict["7"].append({'image': frame})
                 ret_dict["8"] = self.frame_id
                 ret_dict["9"] = self.overlap_P
-                ret_dict["10"] = -1
+                ret_dict["10"] = [[0, 0]]
 
         except Exception as e:
             traceback.print_exc()
             ret_dict["1"] = str(e)
+        logger.info(ret_dict)
         return ret_dict
