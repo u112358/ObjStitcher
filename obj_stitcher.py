@@ -314,12 +314,6 @@ class ObjStitcher:
         else:
             self.buffer = frame
         # self.buffer.append(frame)
-
-        if self.buffer is not None:
-            self.buffer = np.vstack([self.buffer, frame])
-        else:
-            self.buffer = frame
-        # self.buffer.append(frame)
         total_rows = self._buffer_total_rows()
         self.frame_offsets.append([
             self.current_frame_in_obj_start,
@@ -466,9 +460,7 @@ class ObjStitcher:
 
                     self.mode = "check_mark"
                     return completed_objects
-                    return completed_objects
                 else:
-                    # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
@@ -500,8 +492,6 @@ class ObjStitcher:
                     standard_mark_end = self.block_size - self.overlap_P - self.mark_to_end
                     shift = mark_end - standard_mark_end
                     logger.debug(
-                        f"[CHECK MARK]: mark end: {mark_end}, standard mark end: {standard_mark_end}"
-                    )
                         f"[CHECK MARK]: mark end: {mark_end}, standard mark end: {standard_mark_end}"
                     )
                     logger.debug(f"[CHECK MARK] 偏移量: {shift}")
@@ -545,16 +535,8 @@ class ObjStitcher:
                         "frame_offsets": frame_offsets_output,
                         "frame_pulse": frame_pulse_output
                     }
-                        "type": "success",
-                        "mark_starts": [mark_start],
-                        "mark_ends": [mark_end],
-                        "frame_list": frame_list_output,
-                        "frame_offsets": frame_offsets_output,
-                        "frame_pulse": frame_pulse_output
-                    }
                     logger.debug(
                         f"[CHECK MARK]: 输出 正常图，固定块: 0 ~ {self.block_size}")
-                    return completed_objects
                     return completed_objects
                 else:
                     self.problematic_pending = True
