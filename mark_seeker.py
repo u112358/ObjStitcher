@@ -57,7 +57,7 @@ class KongboSeeker(MarkSeeker):
 
         if len(roi.shape) == 3:
             if roi.shape[2] == 3:
-                roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         binary = cv2.threshold(roi, 150, 255, cv2.THRESH_BINARY)[1]
         if visiable:
             cv2.imshow('binary', binary)
@@ -69,7 +69,7 @@ class KongboSeeker(MarkSeeker):
         max_label = 0
         valid_labels = []
         threshold = mark_length * obj_width * \
-                    (1 - 2 * cut_edge_coefficient) * 0.8
+            (1 - 2 * cut_edge_coefficient) * 0.9
 
         # 从 1 开始遍历（假设 0 为背景）
         for label in range(1, num_labels):

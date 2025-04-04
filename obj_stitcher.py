@@ -3,6 +3,7 @@ import pdb
 import time
 import json
 import traceback
+import traceback
 import cv2
 import numpy as np
 import os
@@ -14,9 +15,111 @@ CAM_MUL_FACTOR = 1
 CAM_DIV_FACTOR = 1
 CAM_PULSE_PER_PIXEL = CAM_DIV_FACTOR / CAM_MUL_FACTOR
 DISTANCE_BETWEEN_CAMS = 2300
+CAM_MUL_FACTOR = 1
+CAM_DIV_FACTOR = 1
+CAM_PULSE_PER_PIXEL = CAM_DIV_FACTOR / CAM_MUL_FACTOR
+DISTANCE_BETWEEN_CAMS = 2300
 
 
 class ObjStitcher:
+    """
+    ObjStitcher is a class designed to process frames of an object and stitch them together based on detected marks.
+    Attributes:
+        object_length_pixels (int): The length of the object in pixels.
+        input_type (str): The type of input, either 'aligned' or 'not_aligned'.
+        mark_to_end (int): The distance from the mark to the end of the object.
+        overlap (int): The overlap in pixels.
+        block_size (int): The size of the block in pixels.
+        mark_roi (list): The region of interest for the mark.
+        buffer (list): A list to store consecutive frames.
+        mode (str): The current mode, either "seek_mark" or "check_mark".
+        seek_mark (function): A function to seek marks.
+        check_mark (function): A function to check marks.
+        frame_id (int): The current frame ID.
+        frame_list (list): A list of frame IDs.
+    Methods:
+        process_frame(frame, reset_signal=False):
+            Processes a single frame and updates the buffer and mode accordingly.
+                frame (np.ndarray): The frame to process.
+                reset_signal (bool, optional): If True, resets the object. Defaults to False.
+                dict: A dictionary containing the completed object and its type.
+        _buffer_to_array():
+            Concatenates all frames in the buffer to a single array.
+        _buffer_total_rows():
+            Calculates the total number of rows in all frames stored in the buffer.
+        _extract_rows(start, end):
+                np.ndarray or None: A concatenated array of the extracted rows if any rows are within the range, otherwise None.
+        _remove_rows(num_rows):
+    """
+
+    def __init__(self):
+        logger.info(
+            "to work with timesai, instance has to be initialised manually")
+        self.initialised = False
+
+    def _init_timesai_tool(self, mark_seeker, jp_length_MM, mark_length_MM,
+                           cam_MM_per_P_Y, frame_width_P, input_type,
+                           overlap_P):
+        """
+        Initializes the ObjStitcher class with the given parameters.
+        Args:
+            mark_seeker (object): An object responsible for seeking and checking marks.
+            object_length_MM (float): The length of the object in millimeters.
+            cam_MM_per_P_Y (float): The camera's millimeters per pixel in the Y direction.
+            mark_length_MM (int): The length of the mark in pixels.
+            frame_width_P (int): The width of the frame in pixels.
+            input_type (str, optional): The type of input, either 'aligned' or 'not_aligned'. Defaults to 'aligned'.
+            overlap (int, optional): The overlap in pixels. Defaults to 100.
+        Raises:
+            ValueError: If the input_type is not 'aligned' or 'not_aligned'.
+        """
+        # 像素精度
+        self.cam_MM_per_P_Y = cam_MM_per_P_Y
+        # 整个物料的物理长度，单位mm
+        self.object_length_MM = jp_length_MM + mark_length_MM
+        # 换算出来的整个物料的像素长度
+        self.object_length_P = int(
+            round(self.object_length_MM / cam_MM_per_P_Y))
+        # 空箔像素长度
+        self.mark_length_P = int(round(mark_length_MM / cam_MM_per_P_Y))
+        # 极片像素长度
+        self.jp_length_P = self.object_length_P - self.mark_length_P
+        # 入料方式， aligned 或者是 not_aligned
+        # TODO 这个要和其他人写的代码统一叫法
+        self.input_type = input_type
+        if self.input_type == "aligned":
+            """
+            |-------|
+            |       |   
+            |       |
+            |       |
+            |       |   
+            |*******|
+            |*******|
+            |*******|
+            """
+            self.mark_to_end = 0
+        elif self.input_type == "not_aligned":
+            """
+            |*******|
+            |*******|   mark_length
+            |*******|
+            |       |
+            |       |   jp_length
+            |       |
+            |       |
+            |-------|
+            """
+            self.mark_to_end = self.jp_length_P
+        else:
+            raise ValueError("input type must be 'aligned' or 'not_aligned'")
+
+        # 每次输出物料时，物料上方和下方留的像素数量，便于找物料边缘，
+        # 同时能解决一部分因为物料长度公差引起的找不到空箔的情况
+        self.overlap_P = overlap_P
+        # 输出的图大小，等于完整物料加上 上方和下方两块overlap的大小
+        self.block_size = self.object_length_P + 2 * self.overlap_P
+        # 帧宽度，线宽，8K
     """
     ObjStitcher is a class designed to process frames of an object and stitch them together based on detected marks.
     Attributes:
@@ -131,9 +234,31 @@ class ObjStitcher:
         self.buffer = None  # 存放连续帧
 
         # 定义了一个找mark类，如果是其他种类的膜类，拼图的核心方法可以在外面改
+        # 找空箔的roi，很显然这个和入料方式有关，与入料方式的关系体现在上面
+        # self.mark_to_end的赋值上了
+        self.mark_roi = [
+            0, self.jp_length_P + self.overlap_P - self.mark_to_end,
+            self.frame_width_P, self.mark_length_P
+        ]
+
+        # 有两种模式， 一种是每一帧放到list里，然后用的时候拼起来，一种是每次进来就拼
+        # 具体哪种速度快还没有结论，测出来差不多，这两种方式我都保留了，如果要切换的话，
+        # 下面取图，删buffer，算buffer size的函数都要切换过来
+
+        # self.buffer = []
+        self.buffer = None  # 存放连续帧
+
+        # 定义了一个找mark类，如果是其他种类的膜类，拼图的核心方法可以在外面改
         self.mark_seeker = mark_seeker
         self.seek_mark: function = self.mark_seeker.seek_mark
         self.check_mark: function = self.mark_seeker.check_mark
+
+        # 在没有开始固定行取图，判断是否存在mark模式之前，是找mark模式
+        self.mode = "seek_mark"  # 初始为seek mark模式
+
+        # 为了后面的结果合并，需要把每一片料（每一个EA）由哪些帧组成的（frame_list)
+        # 每一帧在这个完整物料中的相对位置（frame_offsets）
+        # 保存起来
 
         # 在没有开始固定行取图，判断是否存在mark模式之前，是找mark模式
         self.mode = "seek_mark"  # 初始为seek mark模式
@@ -162,8 +287,33 @@ class ObjStitcher:
             "frame_pulse": 0
         }
 
+        self.frame_offsets = []
+        self.current_frame_in_obj_start = 0
+        self.first_round = True
+        self.need_to_find_first_object = True
+        # 初始化flag，True表示初始化已经完成
+        self.initialised = True  # 初始化成功
+
+    def process_frame(self, frame, frame_pulse):
+        # 初始化返回字典
+        completed_objects = {
+            "object": None,
+            "type": 'pending',
+            "mark_starts": 0,
+            "mark_ends": 0,
+            "frame_list": [],
+            "frame_offsets": [],
+            "frame_pulse": 0
+        }
+
         self.frame_id += 1
         self.frame_list.append(self.frame_id)
+
+        if self.buffer is not None:
+            self.buffer = np.vstack([self.buffer, frame])
+        else:
+            self.buffer = frame
+        # self.buffer.append(frame)
 
         if self.buffer is not None:
             self.buffer = np.vstack([self.buffer, frame])
@@ -179,7 +329,13 @@ class ObjStitcher:
         frame_pulse_output = []
         logger.debug(f"[READ FRAME] 当前缓冲区总行数: {total_rows}, 模式: {self.mode}")
 
+
         if self.mode == "seek_mark":
+            mark_exists, mark_nums, mark_starts, mark_ends = self.seek_mark(
+                self._buffer_to_array(), self.frame_width_P,
+                self.mark_length_P)
+            logger.debug(f"[SEEK MARK] result: {mark_exists}")
+
             mark_exists, mark_nums, mark_starts, mark_ends = self.seek_mark(
                 self._buffer_to_array(), self.frame_width_P,
                 self.mark_length_P)
@@ -310,10 +466,14 @@ class ObjStitcher:
 
                     self.mode = "check_mark"
                     return completed_objects
+                    return completed_objects
                 else:
+                    # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     # TODO 还需要考虑下一帧也有mark， 检测到下一个mark的情况， 碰到短料，长空箔的时候容易出现
                     logger.debug(f"[SEEK MARK] 缓冲区不足，等待更多帧。")
         elif self.mode == "check_mark":
+            logger.debug(
+                f"block_size:{self.block_size} total_rows:{total_rows}")
             logger.debug(
                 f"block_size:{self.block_size} total_rows:{total_rows}")
             if total_rows >= self.block_size:
@@ -326,11 +486,22 @@ class ObjStitcher:
                 block_pulse = frame_pulse - lines_remain * CAM_PULSE_PER_PIXEL
                 frame_pulse_output.append(block_pulse - (
                     self.block_size - mark_end) * CAM_PULSE_PER_PIXEL)
+                margin = self.overlap_P // 2  # 用于扩大ROI，判断是否有空箔
+                mark_exists, mark_start, mark_end = self.check_mark(
+                    block, self.frame_width_P, self.mark_length_P,
+                    self.mark_roi, margin)
+                lines_remain = total_rows - self.block_size
+                block_pulse = frame_pulse - lines_remain * CAM_PULSE_PER_PIXEL
+                frame_pulse_output.append(block_pulse - (
+                    self.block_size - mark_end) * CAM_PULSE_PER_PIXEL)
 
                 if mark_exists:
                     standard_mark_end = self.block_size - self.overlap_P - self.mark_to_end
+                    standard_mark_end = self.block_size - self.overlap_P - self.mark_to_end
                     shift = mark_end - standard_mark_end
                     logger.debug(
+                        f"[CHECK MARK]: mark end: {mark_end}, standard mark end: {standard_mark_end}"
+                    )
                         f"[CHECK MARK]: mark end: {mark_end}, standard mark end: {standard_mark_end}"
                     )
                     logger.debug(f"[CHECK MARK] 偏移量: {shift}")
@@ -374,8 +545,16 @@ class ObjStitcher:
                         "frame_offsets": frame_offsets_output,
                         "frame_pulse": frame_pulse_output
                     }
+                        "type": "success",
+                        "mark_starts": [mark_start],
+                        "mark_ends": [mark_end],
+                        "frame_list": frame_list_output,
+                        "frame_offsets": frame_offsets_output,
+                        "frame_pulse": frame_pulse_output
+                    }
                     logger.debug(
                         f"[CHECK MARK]: 输出 正常图，固定块: 0 ~ {self.block_size}")
+                    return completed_objects
                     return completed_objects
                 else:
                     self.problematic_pending = True
@@ -405,6 +584,16 @@ class ObjStitcher:
 
     #     return np.concatenate(self.buffer, axis=0)
 
+    # def _buffer_to_array(self):
+    #     """
+    #     Concatenate all frames in the buffer to a single array.
+
+    #     Returns:
+    #         np.ndarray: A concatenated array of all frames in the buffer.
+    #     """
+
+    #     return np.concatenate(self.buffer, axis=0)
+
     def _buffer_to_array(self):
         return self.buffer
 
@@ -414,7 +603,19 @@ class ObjStitcher:
 
     #     This method iterates over each frame in the buffer and sums up the number
     #     of rows (shape[0]) for each frame.
+        return self.buffer
 
+    # def _buffer_total_rows(self):
+    #     """
+    #     Calculate the total number of rows in all frames stored in the buffer.
+
+    #     This method iterates over each frame in the buffer and sums up the number
+    #     of rows (shape[0]) for each frame.
+
+    #     Returns:
+    #         int: The total number of rows in all frames in the buffer.
+    #     """
+    #     return sum(frame.shape[0] for frame in self.buffer)
     #     Returns:
     #         int: The total number of rows in all frames in the buffer.
     #     """
@@ -606,6 +807,7 @@ class ObjStitcher:
 
             completed_objects = self.process_frame(frame, frame_pulse)
             obj_type = completed_objects["type"]
+            mark_starts = completed_objects["mark_starts"]
             mark_starts = completed_objects["mark_starts"]
             mark_ends = completed_objects["mark_ends"]
             frame_list = completed_objects["frame_list"]

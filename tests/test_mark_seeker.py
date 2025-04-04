@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+from numpy import inf
 import cv2
 from mark_seeker import KongboSeeker
 
@@ -14,6 +15,7 @@ class TestKongboSeeker(unittest.TestCase):
         obj_width = 10
         mark_length = 10
         result = self.seeker.seek_mark(buffer, obj_width, mark_length)
+        self.assertEqual(result, (False, 0, [-inf]))
         self.assertEqual(result, (False, 0, [-np.inf]))
 
 
