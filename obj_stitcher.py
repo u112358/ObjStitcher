@@ -173,7 +173,7 @@ class ObjStitcher:
         total_rows = self._buffer_total_rows()
         self.frame_offsets.append([
             self.current_frame_in_obj_start,
-            self.current_frame_in_obj_start + frame.shape[0]
+            self.current_frame_in_obj_start + frame.shape[0] -1
         ])
         self.current_frame_in_obj_start += frame.shape[0]
         frame_pulse_output = []
@@ -209,6 +209,9 @@ class ObjStitcher:
                             # 这里要调整
                             completed_objects["frame_pulse"] = [
                                 (fp - self.object_length_P*CAM_PULSE_PER_PIXEL) for fp in frame_pulse_output]
+
+                            completed_objects["frame_list"] = self.frame_list
+                            completed_objects["frame_offsets"] = self.frame_offsets
                             self.mode = "check_mark"
 
                             self.frame_list = self.frame_list[-1:]
@@ -219,7 +222,7 @@ class ObjStitcher:
                             self.frame_offsets.append([
                                 self.current_frame_in_obj_start,
                                 self.current_frame_in_obj_start +
-                                frame.shape[0]
+                                frame.shape[0] - 1
                             ])
                             self.current_frame_in_obj_start += frame.shape[0]
                             self.need_to_find_first_object = False
@@ -234,6 +237,8 @@ class ObjStitcher:
                             completed_objects["mark_starts"] = mark_starts
                             completed_objects["mark_ends"] = mark_ends
                             completed_objects["frame_pulse"] = frame_pulse_output
+                            completed_objects["frame_list"] = self.frame_list
+                            completed_objects["frame_offsets"] = self.frame_offsets
                             self.mode = "check_mark"
 
                             self.frame_list = self.frame_list[-1:]
@@ -244,7 +249,7 @@ class ObjStitcher:
                             self.frame_offsets.append([
                                 self.current_frame_in_obj_start,
                                 self.current_frame_in_obj_start +
-                                frame.shape[0]
+                                frame.shape[0] - 1
                             ])
                             self.current_frame_in_obj_start += frame.shape[0]
                             self.need_to_find_first_object = False
@@ -276,7 +281,7 @@ class ObjStitcher:
                         for _ in range(nof_frames_to_keep):
                             self.frame_offsets.append([
                                 self.current_frame_in_obj_start,
-                                self.current_frame_in_obj_start + frame.shape[0]
+                                self.current_frame_in_obj_start + frame.shape[0] - 1
                             ])
                             self.current_frame_in_obj_start += frame.shape[0]
                     else:
@@ -285,7 +290,6 @@ class ObjStitcher:
                         self.current_frame_in_obj_start = 0
                         frame_offsets_output = self.frame_offsets
                         self.frame_offsets = []
-
                     completed_objects["object"] = block,
                     completed_objects["frame_list"] = frame_list_output
                     completed_objects["frame_offsets"] = frame_offsets_output
@@ -333,6 +337,8 @@ class ObjStitcher:
                     block = self._extract_rows(shift, self.block_size + shift)
                     self._remove_rows(self.block_size + shift -
                                       self.overlap_P * 2)
+
+                    frame_offsets_output = []
                     if total_rows > self.block_size + shift - self.overlap_P * 2:
                         frame_offsets_output = self.frame_offsets
                         frame_list_output = self.frame_list
@@ -344,7 +350,7 @@ class ObjStitcher:
                             frame.shape[0]
                         self.frame_offsets.append([
                             self.current_frame_in_obj_start,
-                            self.current_frame_in_obj_start + frame.shape[0]
+                            self.current_frame_in_obj_start + frame.shape[0] - 1
                         ])
                         self.current_frame_in_obj_start += frame.shape[0]
                     else:
@@ -353,6 +359,12 @@ class ObjStitcher:
                         self.frame_list = []
                         self.frame_offsets = []
                         self.current_frame_in_obj_start = 0
+
+                    if len(frame_offsets_output)>0:
+                        for i in range(len(frame_offsets_output)):
+                            frame_offsets_output[i][0] -= shift
+                            frame_offsets_output[i][1] -= shift
+
                     completed_objects = {
                         "object": block,
                         "type": "success",
@@ -576,9 +588,9 @@ class ObjStitcher:
             mark_length_MM = jp_dimensions[2]
             frame_width_P = frame.shape[1]
 
-            overlap_MM = 50  # 50 mm
-            if overlap_MM > mark_length_MM // 3:
-                overlap_MM = mark_length_MM // 3
+            overlap_MM = 20  # 20 mm
+            # if overlap_MM > mark_length_MM // 3:
+            #     overlap_MM = mark_length_MM // 3
             overlap_P = int(round(overlap_MM / cam_MM_per_P_Y))
             if not self.initialised:
                 mark_seeker = KongboSeeker()
@@ -593,9 +605,6 @@ class ObjStitcher:
                 ret_dict["11"] = 0
 
             completed_objects = self.process_frame(frame, frame_pulse)
-            # if self.frame_id >=5:
-            #
-            #     pdb.set_trace()
             obj_type = completed_objects["type"]
             mark_starts = completed_objects["mark_starts"]
             mark_ends = completed_objects["mark_ends"]
@@ -633,7 +642,10 @@ class ObjStitcher:
                         ]])
                         ret_dict["10"].append(
                             [frame_pulse[i], frame_pulse[i]-self.mark_length_P*CAM_PULSE_PER_PIXEL])
-                ret_dict["4"].append({'image': completed_objects["object"]})
+                ret_img = completed_objects["object"]
+                if isinstance(ret_img, tuple): # 不知道为什么要加这个
+                    ret_img = ret_img[0]
+                ret_dict["4"].append({'image': ret_img})
                 ret_dict["5"] = frame_list
                 ret_dict["6"] = frame_offsets
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
