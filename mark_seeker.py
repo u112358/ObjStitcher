@@ -24,7 +24,7 @@ class KongboSeeker(MarkSeeker):
 
     def seek_mark(self, buffer, obj_width, mark_length, ratio=0.05, mode="seek_mark", visiable=False):
 
-        print(buffer.shape, flush=True)
+
         if ratio != 1.0:
             scaled_w = int(buffer.shape[1] * ratio)
             scaled_h = int(buffer.shape[0] * ratio)
@@ -69,7 +69,7 @@ class KongboSeeker(MarkSeeker):
         max_label = 0
         valid_labels = []
         threshold = mark_length * obj_width * \
-            (1-2*cut_edge_coefficient) * 0.9
+                    (1 - 2 * cut_edge_coefficient) * 0.8
 
         # 从 1 开始遍历（假设 0 为背景）
         for label in range(1, num_labels):
@@ -83,7 +83,7 @@ class KongboSeeker(MarkSeeker):
                     max_label = label
 
         if len(valid_labels) == 0:
-            return False, 0, [-inf]
+            return False, 0, [inf], [-inf]
 
         if mode == "seek_mark":  # 如果是seek mark模式，需要把所有的mark点位置返回
             pass
@@ -93,6 +93,7 @@ class KongboSeeker(MarkSeeker):
         valid_mark_nums = len(valid_labels)
         logger.debug(f"valid_mark_nums: {valid_mark_nums}")
         valid_mark_ends = []
+        valid_mark_starts = []
         for label in valid_labels:
             x = stats[label, cv2.CC_STAT_LEFT]
             y = stats[label, cv2.CC_STAT_TOP]
@@ -105,11 +106,13 @@ class KongboSeeker(MarkSeeker):
             bottom = y + h - 1
             if ratio != 1.0:
                 bottom = int(bottom / ratio)
+                top = int(top / ratio)
             valid_mark_ends.append(bottom)
+            valid_mark_starts.append(top)
         logger.debug(
             f"valid_mark_nums: {valid_mark_nums} valid_mark_ends:{valid_mark_ends}")
 
-        return True, valid_mark_nums, valid_mark_ends
+        return True, valid_mark_nums, valid_mark_starts, valid_mark_ends
 
     def check_mark(self, block, obj_width, mark_length, mark_roi, margin, ratio=0.05, visiable=False):
         """
@@ -134,7 +137,8 @@ class KongboSeeker(MarkSeeker):
         start_y = y - margin
         end_y = y + h + margin
         roi = block[start_y:end_y, start_x:end_x]
-        mark_exists, _, mark_end = self.seek_mark(
+        mark_exists, _, mark_start, mark_end = self.seek_mark(
             roi, obj_width, mark_length, ratio, mode="check_mark", visiable=visiable)
+        mark_start_in_block = start_y + mark_start[-1]
         mark_end_in_block = start_y + mark_end[-1]
-        return mark_exists, mark_end_in_block
+        return mark_exists, mark_start_in_block, mark_end_in_block
